@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use futures_util::{SinkExt, StreamExt};
 
 #[derive(Default, Clone)]
 struct State
 {
-    socket_running : bool
+    socket_running : bool,
+    cancel_tx: Option<Arc<mpsc::Sender<()>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -14,6 +17,7 @@ enum ButtonEvent
 {
     StartSocket,
     StopSocket,
+    SocketStopping(()),
     SocketStopped(())
 }
 
@@ -30,13 +34,39 @@ fn update(state: &mut State, event: ButtonEvent) -> iced::Task<ButtonEvent>
         ButtonEvent::StartSocket =>
         {
             state.socket_running = true;
-            iced::Task::perform(kraken_socket(), ButtonEvent::SocketStopped)
+            
+            let (cancel_tx, cancel_rx) = mpsc::channel(1);
+            state.cancel_tx = Some(Arc::new(cancel_tx));
+            iced::Task::perform(kraken_socket(cancel_rx), ButtonEvent::SocketStopped)
         },
-        ButtonEvent::StopSocket => println!("temp stopping").into(),
+        ButtonEvent::StopSocket => 
+        {
+            if let Some(cancel_tx) = state.cancel_tx.clone()
+            {
+                iced::Task::perform(async move
+                    {
+                        let _ = cancel_tx.send(()).await;
+                    },
+                    ButtonEvent::SocketStopping
+                )
+            }
+            else
+            {
+                println!("No sockets running");
+                iced::Task::none()
+            }
+        },
+        ButtonEvent::SocketStopping(_) =>
+        {
+            println!("Stopping socket...");
+            iced::Task::none()
+        },
         ButtonEvent::SocketStopped(_) =>
         {
+            state.cancel_tx = None;
+            state.socket_running = false;
             println!("Socket stopped");
-            
+
             iced::Task::none()
         }
     }
@@ -62,7 +92,7 @@ fn view(state: &State) -> iced::widget::Row<ButtonEvent>
     }
 }
 
-async fn kraken_socket()
+async fn kraken_socket(mut cancel_rx: mpsc::Receiver<()>)
 {
     let symbol = "BTC";
     let currency = "USD";
@@ -87,33 +117,42 @@ async fn kraken_socket()
             eprintln!("Error sending message: {:?}", e);
         }
 
-        loop
+        tokio::select!
         {
-            if let Some(Ok(response)) = socket.next().await
+            _ = cancel_rx.recv() =>
             {
-                let resp_json : serde_json::Value = serde_json::from_str(response.to_text().unwrap()).unwrap();
+                let _ = socket.close(None).await;
+                return;
+            }
 
-                if resp_json["success"] == true
+            _ = async
+            {
+                while let Some(Ok(response)) = socket.next().await
                 {
-                    connected = true;
-                    continue;
-                }
+                    let resp_json : serde_json::Value = serde_json::from_str(response.to_text().unwrap()).unwrap();
 
-                if connected && resp_json["channel"] == "ohlc"
-                {
-                    if resp_json["type"] == "snapshot"
+                    if resp_json["success"] == true
                     {
-                        for i in 0..resp_json["data"].as_array().unwrap().len()
+                        connected = true;
+                        continue;
+                    }
+
+                    if connected && resp_json["channel"] == "ohlc"
+                    {
+                        if resp_json["type"] == "snapshot"
                         {
-                            println!("{}", resp_json["data"][i]["close"]);
+                            for i in 0..resp_json["data"].as_array().unwrap().len()
+                            {
+                                println!("{}", resp_json["data"][i]["close"]);
+                            }
+                        }
+                        else if resp_json["type"] == "update"
+                        {
+                            println!("{}", resp_json["data"][0]["close"]);
                         }
                     }
-                    else if resp_json["type"] == "update"
-                    {
-                        println!("{}", resp_json["data"][0]["close"]);
-                    }
                 }
-            }
+            } => {}
         }
     }
     else
