@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -24,7 +23,7 @@ enum ButtonEvent
 #[tokio::main]
 async fn main() -> iced::Result
 {
-    iced::run("Test", update, view)
+    iced::run("OpenCharting", update, view)
 }
 
 fn update(state: &mut State, event: ButtonEvent) -> iced::Task<ButtonEvent>
@@ -34,6 +33,7 @@ fn update(state: &mut State, event: ButtonEvent) -> iced::Task<ButtonEvent>
         ButtonEvent::StartSocket =>
         {
             state.socket_running = true;
+            println!("Starting socket...");
             
             let (cancel_tx, cancel_rx) = mpsc::channel(1);
             state.cancel_tx = Some(Arc::new(cancel_tx));
@@ -99,7 +99,7 @@ async fn kraken_socket(mut cancel_rx: mpsc::Receiver<()>)
     let mut connected = false;
     let ws_url = "wss://ws.kraken.com/v2";
 
-    let unix_time = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time travel to the past") - Duration::new(86400, 0);
+    let _unix_time = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time travel to the past") - Duration::new(86400, 0);
 
     if let Ok((mut socket, _)) = connect_async(ws_url).await
     {
