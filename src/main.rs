@@ -9,10 +9,11 @@ struct State
 {
     socket_running : bool,
     cancel_tx: Option<Arc<mpsc::Sender<()>>>,
+    price: String,
 }
 
 #[derive(Debug, Clone)]
-enum ButtonEvent
+enum Event
 {
     StartSocket,
     StopSocket,
@@ -26,20 +27,20 @@ async fn main() -> iced::Result
     iced::run("OpenCharting", update, view)
 }
 
-fn update(state: &mut State, event: ButtonEvent) -> iced::Task<ButtonEvent>
+fn update(state: &mut State, event: Event) -> iced::Task<Event>
 {
     match event
     {
-        ButtonEvent::StartSocket =>
+        Event::StartSocket =>
         {
             state.socket_running = true;
             println!("Starting socket...");
             
             let (cancel_tx, cancel_rx) = mpsc::channel(1);
             state.cancel_tx = Some(Arc::new(cancel_tx));
-            iced::Task::perform(kraken_socket(cancel_rx), ButtonEvent::SocketStopped)
+            iced::Task::perform(kraken_socket(/*state, */cancel_rx), Event::SocketStopped)
         },
-        ButtonEvent::StopSocket => 
+        Event::StopSocket => 
         {
             if let Some(cancel_tx) = state.cancel_tx.clone()
             {
@@ -47,7 +48,7 @@ fn update(state: &mut State, event: ButtonEvent) -> iced::Task<ButtonEvent>
                     {
                         let _ = cancel_tx.send(()).await;
                     },
-                    ButtonEvent::SocketStopping
+                    Event::SocketStopping
                 )
             }
             else
@@ -56,12 +57,12 @@ fn update(state: &mut State, event: ButtonEvent) -> iced::Task<ButtonEvent>
                 iced::Task::none()
             }
         },
-        ButtonEvent::SocketStopping(_) =>
+        Event::SocketStopping(_) =>
         {
             println!("Stopping socket...");
             iced::Task::none()
         },
-        ButtonEvent::SocketStopped(_) =>
+        Event::SocketStopped(_) =>
         {
             state.cancel_tx = None;
             state.socket_running = false;
@@ -72,13 +73,17 @@ fn update(state: &mut State, event: ButtonEvent) -> iced::Task<ButtonEvent>
     }
 }
 
-fn view(state: &State) -> iced::widget::Row<ButtonEvent>
+fn view(state: &State) -> iced::Element<'_, Event>
 {
-    if !state.socket_running
+    let title_text = iced::widget::text("OpenCharting").size(28);
+    let symbol_text = iced::widget::text("Kraken BTC/USD").size(40);
+    let symbol_value = iced::widget::text("$".to_owned() + &state.price).size(32);
+
+    let button_row = if !state.socket_running
     {
         iced::widget::row!
         [
-            iced::widget::button(iced::widget::text("Start")).on_press(ButtonEvent::StartSocket),
+            iced::widget::button(iced::widget::text("Start")).on_press(Event::StartSocket),
             iced::widget::button(iced::widget::text("Stop"))
         ]
     }
@@ -87,12 +92,27 @@ fn view(state: &State) -> iced::widget::Row<ButtonEvent>
         iced::widget::row!
         [
             iced::widget::button(iced::widget::text("Start")),
-            iced::widget::button(iced::widget::text("Stop")).on_press(ButtonEvent::StopSocket)
+            iced::widget::button(iced::widget::text("Stop")).on_press(Event::StopSocket)
         ]
-    }
+    }.spacing(20);
+
+    let center_column = iced::widget::column!
+    [
+        symbol_text,
+        symbol_value,
+        button_row
+    ];
+
+    let center_container = iced::widget::Container::new(center_column).center(iced::Length::Fill);
+
+    iced::widget::column!
+    [
+        title_text,
+        center_container,
+    ].into()
 }
 
-async fn kraken_socket(mut cancel_rx: mpsc::Receiver<()>)
+async fn kraken_socket(/*state: &mut State,*/ mut cancel_rx: mpsc::Receiver<()>)
 {
     let symbol = "BTC";
     let currency = "USD";
@@ -143,12 +163,16 @@ async fn kraken_socket(mut cancel_rx: mpsc::Receiver<()>)
                         {
                             for i in 0..resp_json["data"].as_array().unwrap().len()
                             {
-                                println!("{}", resp_json["data"][i]["close"]);
+                                /*state.price = resp_json["data"][i]["close"].to_string();
+                                println!("{}", state.price);*/
+                                println!("{}", resp_json["data"][i]["close"])
                             }
                         }
                         else if resp_json["type"] == "update"
                         {
-                            println!("{}", resp_json["data"][0]["close"]);
+                            /*state.price = resp_json["data"][0]["close"].to_string();
+                            println!("{}", state.price);*/
+                            println!("{}", resp_json["data"][0]["close"])
                         }
                     }
                 }
