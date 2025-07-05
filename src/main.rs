@@ -38,7 +38,7 @@ fn update(state: &mut State, event: Event) -> iced::Task<Event>
             
             let (cancel_tx, cancel_rx) = mpsc::channel(1);
             state.cancel_tx = Some(Arc::new(cancel_tx));
-            iced::Task::perform(kraken_socket(/*state, */cancel_rx), Event::SocketStopped)
+            iced::Task::perform(kraken_socket(cancel_rx), Event::SocketStopped)
         },
         Event::StopSocket => 
         {
@@ -112,7 +112,7 @@ fn view(state: &State) -> iced::Element<'_, Event>
     ].into()
 }
 
-async fn kraken_socket(/*state: &mut State,*/ mut cancel_rx: mpsc::Receiver<()>)
+async fn kraken_socket(mut cancel_rx: mpsc::Receiver<()>)
 {
     let symbol = "BTC";
     let currency = "USD";
@@ -163,16 +163,12 @@ async fn kraken_socket(/*state: &mut State,*/ mut cancel_rx: mpsc::Receiver<()>)
                         {
                             for i in 0..resp_json["data"].as_array().unwrap().len()
                             {
-                                /*state.price = resp_json["data"][i]["close"].to_string();
-                                println!("{}", state.price);*/
-                                println!("{}", resp_json["data"][i]["close"])
+                                println!("{}", resp_json["data"][i]["close"]);
                             }
                         }
                         else if resp_json["type"] == "update"
                         {
-                            /*state.price = resp_json["data"][0]["close"].to_string();
-                            println!("{}", state.price);*/
-                            println!("{}", resp_json["data"][0]["close"])
+                            println!("{}", resp_json["data"][0]["close"]);
                         }
                     }
                 }
