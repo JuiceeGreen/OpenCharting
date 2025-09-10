@@ -5,7 +5,7 @@ Currently under development.
 
 - [X] Stream symbol data
 - [X] Start and Stop button for streaming symbol data to console
-- [] Update symbol data in UI
-- [] Graph symbol data
-- [] Stream multiple symbols' data from multiple exchanges
-- [] Polish UI
+- [ ] Update symbol data in UI
+- [ ] Graph symbol data
+- [ ] Stream multiple symbols' data from multiple exchanges
+- [ ] Polish UI
